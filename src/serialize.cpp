@@ -14,73 +14,64 @@ static constexpr uint64_t PRIMARY_KEY_ANNOTATION_ID = 0xbf80fc3031df0b60ull;
 static constexpr uint64_t TABLE_ANNOTATION_ID = 0xb337d975d55c655aull;
 static constexpr uint64_t SCHEMA_ANNOTATION_ID = 0x89ea0152d4a3dae3ull;
 
-kj::Maybe<kj::StringPtr> schemaName(capnp::StructSchema schema) {
-  kj::Maybe<kj::StringPtr> name;
-
-  auto proto = schema.getProto();
-  for (auto anno: proto.getAnnotations()) {
-    switch (anno.getId()) {
-    case SCHEMA_ANNOTATION_ID:
-      name = anno.getValue().getText();
-      break;
-    default:
-      break;
+kj::Maybe<capnp::schema::Value::Reader> getAnnotation(
+  capnp::List<capnp::schema::Annotation>::Reader annotations, uint64_t id) {
+  for (auto anno: annotations) {
+    if (anno.getId() == id) {
+      return anno.getValue();
     }
   }
-  return name;
+  return nullptr;
+}
+
+template <typename F>
+auto mapAnnotation(
+  capnp::List<capnp::schema::Annotation>::Reader annotations,
+  uint64_t id, F&& func = [](auto value) { return value; }) {
+  return getAnnotation(annotations, id).map(kj::mv(func));
+}
+
+kj::Maybe<kj::StringPtr> getAnnotationText(capnp::List<capnp::schema::Annotation>::Reader annotations, uint64_t id) {
+  return mapAnnotation(annotations, id, [](auto value) { return value.getText(); });
+}
+  
+kj::Maybe<kj::StringPtr> schemaName(capnp::StructSchema schema) {
+  auto proto = schema.getProto();
+  return getAnnotationText(proto.getAnnotations(), SCHEMA_ANNOTATION_ID);
+}
+
+kj::StringPtr shortName(capnp::StructSchema schema) {
+  auto proto = schema.getProto();
+  return proto.getDisplayName().slice(proto.getDisplayNamePrefixLength());
 }
 
 kj::StringPtr tableName(capnp::StructSchema schema) {
-  kj::Maybe<kj::StringPtr> name;
-
   auto proto = schema.getProto();
-  for (auto anno: proto.getAnnotations()) {
-    switch (anno.getId()) {
-    case TABLE_ANNOTATION_ID:
-      name = anno.getValue().getText();
-      break;
-    default:
-      break;
-    }
-  }
-  return name.orDefault(proto.getDisplayName().slice(proto.getDisplayNamePrefixLength()));
+  return KJ_UNWRAP_OR_RETURN(
+    getAnnotationText(proto.getAnnotations(), TABLE_ANNOTATION_ID),
+    shortName(schema)
+  );
 }
 
 kj::StringTree fullName(capnp::StructSchema schema) {
+  auto name = tableName(schema);
   KJ_IF_MAYBE(s, schemaName(schema)) {
-    return kj::strTree("[", *s, "].", tableName(schema));
+    return kj::strTree("[", *s, "].", name);
   }
   else {
-    return kj::strTree(tableName(schema));
+    return kj::strTree(name);
   }
 }
 
 bool isPrimaryKey(capnp::StructSchema::Field field) {
-  bool value = false;
-  for (auto anno: field.getProto().getAnnotations()) {
-    switch (anno.getId()) {
-    case PRIMARY_KEY_ANNOTATION_ID:
-      value = anno.getValue().getBool();
-      break;
-    default:
-      break;
-    }
-  }
-  return value;
+  auto proto = field.getProto();
+  auto value = KJ_UNWRAP_OR_RETURN(getAnnotation(proto.getAnnotations(), PRIMARY_KEY_ANNOTATION_ID), false);
+  return value.getBool();
 }
 
 kj::Maybe<kj::StringPtr> annotatedSqlType(capnp::StructSchema::Field field) {
-  kj::Maybe<kj::StringPtr> sqlType;
-  for (auto anno: field.getProto().getAnnotations()) {
-    switch (anno.getId()) {
-    case SQLTYPE_ANNOTATION_ID:
-      sqlType = anno.getValue().getText();
-      break;
-    default:
-      break;
-    }
-  }
-  return sqlType;
+  auto proto = field.getProto();
+  return getAnnotationText(proto.getAnnotations(), SQLTYPE_ANNOTATION_ID);
 }
 
 kj::Maybe<kj::StringPtr> sqlType(capnp::StructSchema::Field field) {

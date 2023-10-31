@@ -9,8 +9,65 @@
 
 namespace sqlcap {
 
-
 static constexpr uint64_t SQLTYPE_ANNOTATION_ID = 0xab6671fbf244a8deull;
+static constexpr uint64_t PRIMARY_KEY_ANNOTATION_ID = 0xbf80fc3031df0b60ull;
+static constexpr uint64_t TABLE_ANNOTATION_ID = 0xb337d975d55c655aull;
+static constexpr uint64_t SCHEMA_ANNOTATION_ID = 0x89ea0152d4a3dae3ull;
+
+kj::Maybe<kj::StringPtr> schemaName(capnp::StructSchema schema) {
+  kj::Maybe<kj::StringPtr> name;
+
+  auto proto = schema.getProto();
+  for (auto anno: proto.getAnnotations()) {
+    switch (anno.getId()) {
+    case SCHEMA_ANNOTATION_ID:
+      name = anno.getValue().getText();
+      break;
+    default:
+      break;
+    }
+  }
+  return name;
+}
+
+kj::StringPtr tableName(capnp::StructSchema schema) {
+  kj::Maybe<kj::StringPtr> name;
+
+  auto proto = schema.getProto();
+  for (auto anno: proto.getAnnotations()) {
+    switch (anno.getId()) {
+    case TABLE_ANNOTATION_ID:
+      name = anno.getValue().getText();
+      break;
+    default:
+      break;
+    }
+  }
+  return name.orDefault(proto.getDisplayName().slice(proto.getDisplayNamePrefixLength()));
+}
+
+kj::StringTree fullName(capnp::StructSchema schema) {
+  KJ_IF_MAYBE(s, schemaName(schema)) {
+    return kj::strTree("[", *s, "].", tableName(schema));
+  }
+  else {
+    return kj::strTree(tableName(schema));
+  }
+}
+
+bool isPrimaryKey(capnp::StructSchema::Field field) {
+  bool value = false;
+  for (auto anno: field.getProto().getAnnotations()) {
+    switch (anno.getId()) {
+    case PRIMARY_KEY_ANNOTATION_ID:
+      value = anno.getValue().getBool();
+      break;
+    default:
+      break;
+    }
+  }
+  return value;
+}
 
 kj::Maybe<kj::StringPtr> annotatedSqlType(capnp::StructSchema::Field field) {
   kj::Maybe<kj::StringPtr> sqlType;
@@ -63,6 +120,26 @@ kj::Maybe<kj::StringPtr> sqlType(capnp::StructSchema::Field field) {
   }
 }
 
+kj::Array<capnp::StructSchema::Field> pkFields(capnp::StructSchema schema) {
+  kj::Vector<capnp::StructSchema::Field> fields;
+  for (auto&& field: schema.getFields()) {
+    if (isPrimaryKey(field)) {
+      fields.add(field);
+    }
+  }
+  return fields.releaseAsArray();
+}
+
+kj::Array<capnp::StructSchema::Field> valueFields(capnp::StructSchema schema) {
+  kj::Vector<capnp::StructSchema::Field> fields;
+  for (auto&& field: schema.getFields()) {
+    if (!isPrimaryKey(field)) {
+      fields.add(field);
+    }
+  }
+  return fields.releaseAsArray();
+}
+
 kj::Array<capnp::StructSchema::Field> fields(capnp::StructSchema schema) {
   kj::Vector<capnp::StructSchema::Field> fields;
   for (auto&& field: schema.getFields()) {
@@ -99,11 +176,12 @@ kj::Array<capnp::StructSchema::Field> fields(capnp::StructSchema schema) {
 kj::String create(capnp::StructSchema schema) {
 
   auto txt = kj::strTree(
-    "CREATE TABLE foo (",
+    "CREATE TABLE ", fullName(schema), " (",
     kj::StringTree(KJ_MAP(field, fields(schema)) {
 	auto name = field.getProto().getName();
 	auto type = KJ_REQUIRE_NONNULL(sqlType(field));
-	return kj::strTree(name, ' ', type);
+	auto pk = isPrimaryKey(field);
+	return kj::strTree(name, ' ', type, (pk ? " PRIMARY_KEY" : ""));
       }, ", "), ") "
   );
   return txt.flatten();
@@ -113,16 +191,46 @@ kj::String create(capnp::StructSchema schema) {
 kj::String insert(capnp::StructSchema schema) {
 
   auto txt = kj::strTree(
-    "INSERT INTO foo (",
+    "INSERT INTO ", fullName(schema), " (",
     kj::StringTree(KJ_MAP(field, fields(schema)) {
 	auto name = field.getProto().getName();
 	return kj::strTree(name);
       }, ", "), ") ",
-    "VALUES(",
+    " VALUES(",
     kj::StringTree(KJ_MAP(field, fields(schema)) {
 	return kj::strTree("?");
       }, ", "), ")"
     
+  );
+  return txt.flatten();
+}
+
+kj::String update(capnp::StructSchema schema) {
+
+  auto txt = kj::strTree(
+    "UPDATE ", fullName(schema), " SET ",
+    kj::StringTree(KJ_MAP(field, valueFields(schema)) {
+	auto name = field.getProto().getName();
+	return kj::strTree(name, " = ?");
+      }, ", "),
+    " WHERE ",
+    kj::StringTree(KJ_MAP(field, pkFields(schema)) {
+	auto name = field.getProto().getName();
+	return kj::strTree(name, " = ?");
+      }, " AND ")
+    
+  );
+  return txt.flatten();
+}
+
+kj::String delete_(capnp::StructSchema schema) {
+
+  auto txt = kj::strTree(
+    "DELETE FROM ", fullName(schema), " WHERE ",
+    kj::StringTree(KJ_MAP(field, pkFields(schema)) {
+	auto name = field.getProto().getName();
+	return kj::strTree(name, " = ?");
+      }, " AND ")
   );
   return txt.flatten();
 }

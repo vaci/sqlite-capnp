@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 #include "serialize.h"
-#include <capnp/test.capnp.h>
+#include "test.capnp.h"
 #include <kj/debug.h>
 #include <kj/main.h>
 
@@ -19,16 +19,26 @@ struct SqliteTest
 };
 
 TEST_F(SqliteTest, CreateTable) {
-  auto schema = capnp::Schema::from<capnproto_test::capnp::test::TestAllTypes>();
+  auto schema = capnp::Schema::from<TestAllTypes>();
   auto str = create(schema);
   KJ_LOG(INFO, str);
 }
 
-
 TEST_F(SqliteTest, Insert) {
-
-  auto schema = capnp::Schema::from<capnproto_test::capnp::test::TestAllTypes>();
+  auto schema = capnp::Schema::from<TestAllTypes>();
   auto str = insert(schema);
+  KJ_LOG(INFO, str);
+}
+
+TEST_F(SqliteTest, Update) {
+  auto schema = capnp::Schema::from<TestAllTypes>();
+  auto str = update(schema);
+  KJ_LOG(INFO, str);
+}
+
+TEST_F(SqliteTest, Delete) {
+  auto schema = capnp::Schema::from<TestAllTypes>();
+  auto str = delete_(schema);
   KJ_LOG(INFO, str);
 }
 

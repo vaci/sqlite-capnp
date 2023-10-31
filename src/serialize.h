@@ -11,5 +11,7 @@ namespace sqlcap {
 
 kj::String create(capnp::StructSchema schema);
 kj::String insert(capnp::StructSchema schema);
+kj::String update(capnp::StructSchema schema);
+kj::String delete_(capnp::StructSchema schema);
 
 }

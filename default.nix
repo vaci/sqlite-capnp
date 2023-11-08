@@ -61,6 +61,7 @@ stdenv.mkDerivation {
   nativeBuildInputs = with pkgs; [
     clang-tools
     ekam
+    pkg-config
     gtest
     which
   ];

@@ -1,0 +1,1 @@
+LIBS="-lcapnpc -lcapnp-rpc -lcapnp -lkj-async -lkj-test -lkj -lkj-test -lsqlite3 -lpthread -lgtest_main -lgtest"

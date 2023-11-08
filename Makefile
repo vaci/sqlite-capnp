@@ -3,22 +3,25 @@
 SHELL := bash
 
 export CAPNP_INCLUDE_PATH = $(abspath $(dir $(shell which capnp))/../include)
-#export CCACHE = $(shell which ccache)
+export CCACHE = $(shell which ccache)
 export CXX = $(shell which g++)
 export CXXFLAGS+=-DCAPNP_INCLUDE_PATH=$(CAPNP_INCLUDE_PATH)
 export CXXFLAGS+=-ggdb --std=c++20
+
+#export CXX_WRAPPER = $(CCACHE)
 
 export LIBS = \
   -lcapnpc -lcapnp-rpc -lcapnp \
   -lkj-async -lkj-test -lkj \
   -lkj-test \
+  -lsqlite3 \
   -lpthread \
   -lgtest_main -lgtest
 
 NIX_BUILD_CORES ?= 7
 EKAM := env \
     LC_ALL=C \
-    EKAM_REMAP_BYPASS_DIRS=$(HOME)/.cache/ \
+    EKAM_REMAP_BYPASS_DIRS=$(shell ccache -k cache_dir)/ \
   nice ekam
 
 EKAM_FLAGS := -j $(NIX_BUILD_CORES) -l 200
